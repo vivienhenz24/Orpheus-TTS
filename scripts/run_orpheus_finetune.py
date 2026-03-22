@@ -177,6 +177,7 @@ def main():
     parser.add_argument("--bf16", action="store_true")
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--logging-steps", type=int, default=10)
+    parser.add_argument("--enable-samples", action="store_true")
     args = parser.parse_args()
 
     dataset = load_from_disk(args.dataset_dir)
@@ -223,22 +224,26 @@ def main():
         lr_scheduler_type="cosine",
     )
 
-    callback = SampleGenerationCallback(
-        tokenizer=tokenizer,
-        sample_speakers=sample_speakers,
-        sample_texts=sample_texts,
-        output_dir=output_dir,
-        sample_rate=args.sample_rate,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        prompt_template=args.prompt_template,
-    )
+    callbacks = []
+    if args.enable_samples:
+        callbacks.append(
+            SampleGenerationCallback(
+                tokenizer=tokenizer,
+                sample_speakers=sample_speakers,
+                sample_texts=sample_texts,
+                output_dir=output_dir,
+                sample_rate=args.sample_rate,
+                device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+                prompt_template=args.prompt_template,
+            )
+        )
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
         data_collator=lambda features: data_collator(features, args.pad_token),
-        callbacks=[callback],
+        callbacks=callbacks,
     )
 
     trainer.train()

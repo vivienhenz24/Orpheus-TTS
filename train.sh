@@ -24,8 +24,8 @@ PROCESSED_DIR="${PROCESSED_DIR:-$ROOT_DIR/artifacts/datasets/orpheus_tr_processe
 RUN_NAME="${RUN_NAME:-turkish-finetune-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/artifacts/runs/$RUN_NAME}"
 
-EPOCHS="${EPOCHS:-1}"
-BATCH_SIZE="${BATCH_SIZE:-1}"
+EPOCHS="${EPOCHS:-5}"
+BATCH_SIZE="${BATCH_SIZE:-2}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
 LEARNING_RATE="${LEARNING_RATE:-5e-5}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"

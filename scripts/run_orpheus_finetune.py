@@ -78,6 +78,12 @@ def deinterleave_to_layers(token_ids):
     return codes_l0, codes_l1, codes_l2
 
 
+def render_prompt(template, text, speaker):
+    if not template:
+        return text
+    return template.replace("{speaker_id}", speaker).replace("{text}", text)
+
+
 class SampleGenerationCallback(TrainerCallback):
     def __init__(self, tokenizer, sample_speakers, sample_texts, output_dir, sample_rate, device, prompt_template):
         self.tokenizer = tokenizer
@@ -90,7 +96,7 @@ class SampleGenerationCallback(TrainerCallback):
         self.snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").to(device).eval()
 
     def _prompt_ids(self, speaker, text):
-        prompt = self.prompt_template.format(text=text, speaker_id=speaker) if self.prompt_template else text
+        prompt = render_prompt(self.prompt_template, text, speaker)
         text_ids = self.tokenizer.encode(prompt, add_special_tokens=True)
         text_ids.append(END_OF_TEXT)
         return [START_OF_HUMAN] + text_ids + [END_OF_HUMAN] + [START_OF_AI] + [START_OF_SPEECH]

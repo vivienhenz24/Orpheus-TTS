@@ -99,6 +99,12 @@ def remove_duplicate_frames(audio_tokens):
     return result
 
 
+def render_prompt(template, text, speaker):
+    if not template:
+        return text
+    return template.replace("{speaker_id}", speaker).replace("{text}", text)
+
+
 def build_processor(args):
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, token=args.hf_token)
@@ -129,10 +135,7 @@ def build_processor(args):
         if not audio_tokens:
             return None
 
-        if args.prompt_template:
-            prompt = args.prompt_template.format(text=text, speaker_id=speaker)
-        else:
-            prompt = text
+        prompt = render_prompt(args.prompt_template, text, speaker)
 
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=True)
         prompt_ids.append(END_OF_TEXT)

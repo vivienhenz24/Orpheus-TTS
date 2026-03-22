@@ -200,20 +200,20 @@ def main():
         "speakers": {},
     }
 
-    def generator():
-        for example in raw_dataset:
-            processed = process_example(example)
-            if processed is None:
-                stats["dropped_examples"] += 1
-                continue
-            stats["kept_examples"] += 1
-            speaker = processed["speaker_id"]
-            speaker_stats = stats["speakers"].setdefault(speaker, {"examples": 0, "hours": 0.0})
-            speaker_stats["examples"] += 1
-            speaker_stats["hours"] += processed["duration_s"] / 3600.0
-            yield processed
+    processed_rows = []
+    for example in raw_dataset:
+        processed = process_example(example)
+        if processed is None:
+            stats["dropped_examples"] += 1
+            continue
+        stats["kept_examples"] += 1
+        speaker = processed["speaker_id"]
+        speaker_stats = stats["speakers"].setdefault(speaker, {"examples": 0, "hours": 0.0})
+        speaker_stats["examples"] += 1
+        speaker_stats["hours"] += processed["duration_s"] / 3600.0
+        processed_rows.append(processed)
 
-    processed_dataset = Dataset.from_generator(generator, features=features)
+    processed_dataset = Dataset.from_list(processed_rows, features=features)
     processed_dataset.save_to_disk(str(output_dir))
 
     lengths = processed_dataset["sequence_length"] if len(processed_dataset) else []

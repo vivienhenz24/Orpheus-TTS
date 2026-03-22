@@ -1,7 +1,9 @@
 import argparse
+import io
 import json
 from pathlib import Path
 
+import soundfile as sf
 import torch
 import torchaudio.transforms as T
 from datasets import Audio, Dataset, DatasetDict, Features, Sequence, Value, load_dataset, load_from_disk
@@ -49,13 +51,27 @@ def load_source_dataset(dataset_name_or_path, split, token):
     return load_dataset(dataset_name_or_path, split=split, token=token)
 
 
+def load_audio(audio_dict):
+    audio_bytes = audio_dict.get("bytes")
+    audio_path = audio_dict.get("path")
+
+    if audio_bytes is not None:
+        waveform_np, sample_rate = sf.read(io.BytesIO(audio_bytes), always_2d=False)
+    elif audio_path:
+        waveform_np, sample_rate = sf.read(audio_path, always_2d=False)
+    else:
+        raise ValueError("Audio example does not contain bytes or path.")
+
+    waveform = torch.tensor(waveform_np, dtype=torch.float32)
+    return waveform, int(sample_rate)
+
+
 def normalize_waveform(audio_dict):
-    waveform = torch.tensor(audio_dict["array"], dtype=torch.float32)
-    sample_rate = int(audio_dict["sampling_rate"])
+    waveform, sample_rate = load_audio(audio_dict)
 
     if waveform.ndim == 1:
         waveform = waveform.unsqueeze(0)
-    elif waveform.ndim == 2 and waveform.shape[0] > waveform.shape[1]:
+    elif waveform.ndim == 2:
         waveform = waveform.transpose(0, 1)
 
     if waveform.shape[0] > 1:
@@ -167,7 +183,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     raw_dataset = load_source_dataset(args.dataset, args.split, args.hf_token)
-    raw_dataset = raw_dataset.cast_column(args.audio_column, Audio(sampling_rate=args.target_sample_rate))
+    raw_dataset = raw_dataset.cast_column(args.audio_column, Audio(decode=False))
 
     required_columns = {args.audio_column, args.text_column}
     missing = [col for col in required_columns if col not in raw_dataset.column_names]

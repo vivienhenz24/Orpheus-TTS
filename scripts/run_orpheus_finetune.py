@@ -1,6 +1,5 @@
 import argparse
 import json
-import math
 import os
 from pathlib import Path
 
@@ -197,13 +196,6 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.save_steps > 0:
-        save_steps = args.save_steps
-    else:
-        steps_per_epoch = math.ceil(len(dataset) / (args.batch_size * args.gradient_accumulation_steps))
-        total_steps = max(1, steps_per_epoch * args.epochs)
-        save_steps = max(500, min(3000, max(1, total_steps // 10)))
-
     sample_speakers = args.sample_speakers or sorted(set(dataset["speaker_id"]))[:2]
     sample_texts = args.sample_text or DEFAULT_SAMPLE_TEXTS
 
@@ -216,8 +208,7 @@ def main():
         bf16=bf16_enabled,
         fp16=fp16_enabled,
         logging_steps=args.logging_steps,
-        save_steps=save_steps,
-        save_strategy="steps",
+        save_strategy="epoch",
         report_to="wandb" if "WANDB_API_KEY" in os.environ else "none",
         remove_unused_columns=True,
         dataloader_num_workers=2,
@@ -254,7 +245,7 @@ def main():
     metadata = {
         "dataset_dir": args.dataset_dir,
         "model_name": args.model_name,
-        "save_steps": save_steps,
+        "save_strategy": "epoch",
         "sample_speakers": sample_speakers,
         "sample_texts": sample_texts,
         "prompt_template": args.prompt_template,

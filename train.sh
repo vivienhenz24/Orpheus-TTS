@@ -59,7 +59,7 @@ RUN_PYTHON="$VENV_DIR/bin/python"
 
 uv pip install --python "$RUN_PYTHON" --upgrade pip setuptools wheel
 uv pip install --python "$RUN_PYTHON" \
-  "transformers>=4.49.0" \
+  "transformers>=4.49.0,<5" \
   "datasets[audio]>=3.2.0" \
   "accelerate>=1.2.0" \
   "huggingface_hub>=0.27.0" \

@@ -49,15 +49,21 @@ export TOKENIZERS_PARALLELISM=false
 
 mkdir -p "$ROOT_DIR/artifacts/datasets" "$ROOT_DIR/artifacts/runs"
 
-"$PYTHON_BIN" -m venv "$VENV_DIR" --system-site-packages
-source "$VENV_DIR/bin/activate"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required but was not found on PATH." >&2
+  exit 1
+fi
 
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install \
+uv venv --python "$PYTHON_BIN" "$VENV_DIR"
+RUN_PYTHON="$VENV_DIR/bin/python"
+
+uv pip install --python "$RUN_PYTHON" --upgrade pip setuptools wheel
+uv pip install --python "$RUN_PYTHON" \
   "transformers>=4.49.0" \
   "datasets[audio]>=3.2.0" \
   "accelerate>=1.2.0" \
   "huggingface_hub>=0.27.0" \
+  "torch>=2.2.0" \
   "torchaudio>=2.2.0" \
   "soundfile>=0.12.1" \
   "snac>=1.2.1" \
@@ -66,7 +72,7 @@ python -m pip install \
   "protobuf>=5.29.0"
 
 if [[ "$FORCE_PREPROCESS" == "1" || ! -d "$PROCESSED_DIR" ]]; then
-  python "$ROOT_DIR/scripts/prepare_orpheus_dataset.py" \
+  "$RUN_PYTHON" "$ROOT_DIR/scripts/prepare_orpheus_dataset.py" \
     --dataset "$DATASET_ID" \
     --split "$DATASET_SPLIT" \
     --output-dir "$PROCESSED_DIR" \
@@ -90,7 +96,7 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-python "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
+"$RUN_PYTHON" "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --dataset-dir "$PROCESSED_DIR" \
   --model-name "$MODEL_ID" \
   --output-dir "$OUTPUT_DIR" \

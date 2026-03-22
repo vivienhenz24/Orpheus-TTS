@@ -1,6 +1,8 @@
 import argparse
+import concurrent.futures
 import io
 import json
+import time
 from pathlib import Path
 
 import soundfile as sf
@@ -105,26 +107,38 @@ def render_prompt(template, text, speaker):
     return template.replace("{speaker_id}", speaker).replace("{text}", text)
 
 
+def prepare_example_audio(example, args):
+    text = str(example[args.text_column]).strip()
+    speaker_value = example.get(args.speaker_column, args.default_speaker)
+    speaker = str(speaker_value).strip() if speaker_value is not None else args.default_speaker
+    if not text or not speaker:
+        return None
+
+    waveform, sample_rate = normalize_waveform(example[args.audio_column])
+    duration_s = waveform.shape[-1] / sample_rate
+    if duration_s < args.min_duration_s or duration_s > args.max_duration_s:
+        return None
+
+    resample_transform = T.Resample(orig_freq=sample_rate, new_freq=args.target_sample_rate)
+    waveform = resample_transform(waveform)
+    return {
+        "waveform": waveform,
+        "text": text,
+        "speaker_id": speaker,
+        "duration_s": float(duration_s),
+    }
+
+
 def build_processor(args):
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, token=args.hf_token)
     snac_model = SNAC.from_pretrained(args.snac_model).to(device).eval()
 
-    def process_example(example):
-        text = str(example[args.text_column]).strip()
-        speaker_value = example.get(args.speaker_column, args.default_speaker)
-        speaker = str(speaker_value).strip() if speaker_value is not None else args.default_speaker
-        if not text or not speaker:
+    def process_prepared(prepared):
+        if prepared is None:
             return None
 
-        waveform, sample_rate = normalize_waveform(example[args.audio_column])
-        duration_s = waveform.shape[-1] / sample_rate
-        if duration_s < args.min_duration_s or duration_s > args.max_duration_s:
-            return None
-
-        resample_transform = T.Resample(orig_freq=sample_rate, new_freq=args.target_sample_rate)
-        waveform = resample_transform(waveform)
-        waveform = waveform.unsqueeze(0).to(device)
+        waveform = prepared["waveform"].unsqueeze(0).to(device)
         with torch.inference_mode():
             codes = snac_model.encode(waveform)
 
@@ -135,6 +149,8 @@ def build_processor(args):
         if not audio_tokens:
             return None
 
+        text = prepared["text"]
+        speaker = prepared["speaker_id"]
         prompt = render_prompt(args.prompt_template, text, speaker)
 
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=True)
@@ -153,12 +169,12 @@ def build_processor(args):
             "attention_mask": attention_mask,
             "speaker_id": speaker,
             "text": text,
-            "duration_s": float(duration_s),
+            "duration_s": prepared["duration_s"],
             "audio_token_count": len(audio_tokens),
             "sequence_length": len(input_ids),
         }
 
-    return process_example
+    return process_prepared
 
 
 def main():
@@ -180,6 +196,9 @@ def main():
     parser.add_argument("--max-seq-len", type=int, default=4096)
     parser.add_argument("--snac-model", default="hubertsiuzdak/snac_24khz")
     parser.add_argument("--device", default=None)
+    parser.add_argument("--prefetch-workers", type=int, default=4)
+    parser.add_argument("--prefetch-factor", type=int, default=16)
+    parser.add_argument("--progress-every", type=int, default=100)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -196,7 +215,7 @@ def main():
             f"Expected README-style source format with at least '{args.audio_column}' and '{args.text_column}'."
         )
 
-    process_example = build_processor(args)
+    process_prepared = build_processor(args)
     features = Features(
         {
             "input_ids": Sequence(Value("int32")),
@@ -220,17 +239,56 @@ def main():
     }
 
     processed_rows = []
-    for example in raw_dataset:
-        processed = process_example(example)
-        if processed is None:
-            stats["dropped_examples"] += 1
-            continue
-        stats["kept_examples"] += 1
-        speaker = processed["speaker_id"]
-        speaker_stats = stats["speakers"].setdefault(speaker, {"examples": 0, "hours": 0.0})
-        speaker_stats["examples"] += 1
-        speaker_stats["hours"] += processed["duration_s"] / 3600.0
-        processed_rows.append(processed)
+    total_examples = len(raw_dataset)
+    started_at = time.time()
+    completed = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.prefetch_workers)) as executor:
+        future_to_index = {}
+        next_index = 0
+        max_in_flight = max(1, args.prefetch_workers * args.prefetch_factor)
+
+        while next_index < total_examples and len(future_to_index) < max_in_flight:
+            future = executor.submit(prepare_example_audio, raw_dataset[next_index], args)
+            future_to_index[future] = next_index
+            next_index += 1
+
+        while future_to_index:
+            done, _ = concurrent.futures.wait(
+                future_to_index,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in done:
+                future_to_index.pop(future)
+                prepared = future.result()
+                processed = process_prepared(prepared)
+                completed += 1
+
+                if processed is None:
+                    stats["dropped_examples"] += 1
+                else:
+                    stats["kept_examples"] += 1
+                    speaker = processed["speaker_id"]
+                    speaker_stats = stats["speakers"].setdefault(speaker, {"examples": 0, "hours": 0.0})
+                    speaker_stats["examples"] += 1
+                    speaker_stats["hours"] += processed["duration_s"] / 3600.0
+                    processed_rows.append(processed)
+
+                if completed % max(1, args.progress_every) == 0 or completed == total_examples:
+                    elapsed = max(1e-6, time.time() - started_at)
+                    rate = completed / elapsed
+                    eta_s = (total_examples - completed) / rate if rate > 0 else 0.0
+                    print(
+                        f"[prep] {completed}/{total_examples} "
+                        f"kept={stats['kept_examples']} dropped={stats['dropped_examples']} "
+                        f"rate={rate:.2f} ex/s eta={eta_s/60:.1f}m",
+                        flush=True,
+                    )
+
+                while next_index < total_examples and len(future_to_index) < max_in_flight:
+                    future = executor.submit(prepare_example_audio, raw_dataset[next_index], args)
+                    future_to_index[future] = next_index
+                    next_index += 1
 
     processed_dataset = Dataset.from_list(processed_rows, features=features)
     processed_dataset.save_to_disk(str(output_dir))

@@ -33,6 +33,9 @@ MIN_DURATION_S="${MIN_DURATION_S:-0.5}"
 MAX_DURATION_S="${MAX_DURATION_S:-20.0}"
 SAVE_STEPS="${SAVE_STEPS:-0}"
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
+PREFETCH_WORKERS="${PREFETCH_WORKERS:-4}"
+PREFETCH_FACTOR="${PREFETCH_FACTOR:-16}"
+PROGRESS_EVERY="${PROGRESS_EVERY:-100}"
 
 FORCE_PREPROCESS="${FORCE_PREPROCESS:-0}"
 TEXT_COLUMN="${TEXT_COLUMN:-text}"
@@ -77,6 +80,9 @@ if [[ "$FORCE_PREPROCESS" == "1" || ! -d "$PROCESSED_DIR" ]]; then
     --max-seq-len "$MAX_SEQ_LEN" \
     --min-duration-s "$MIN_DURATION_S" \
     --max-duration-s "$MAX_DURATION_S" \
+    --prefetch-workers "$PREFETCH_WORKERS" \
+    --prefetch-factor "$PREFETCH_FACTOR" \
+    --progress-every "$PROGRESS_EVERY" \
     ${PROMPT_TEMPLATE:+--prompt-template "$PROMPT_TEMPLATE"}
 else
   echo "Using existing processed dataset at $PROCESSED_DIR"

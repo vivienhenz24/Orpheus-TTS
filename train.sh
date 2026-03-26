@@ -24,7 +24,7 @@ PROCESSED_DIR="${PROCESSED_DIR:-$ROOT_DIR/artifacts/datasets/orpheus_tr_processe
 RUN_NAME="${RUN_NAME:-turkish-finetune-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/artifacts/runs/$RUN_NAME}"
 
-EPOCHS="${EPOCHS:-5}"
+EPOCHS="${EPOCHS:-8}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
 LEARNING_RATE="${LEARNING_RATE:-5e-5}"
@@ -98,7 +98,16 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-"$RUN_PYTHON" "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
+NUM_GPUS="${NUM_GPUS:-$(python3 -c "import torch; print(max(1, torch.cuda.device_count()))" 2>/dev/null || echo 1)}"
+echo "Launching training on $NUM_GPUS GPU(s)"
+
+if [[ "$NUM_GPUS" -gt 1 ]]; then
+  LAUNCHER="$RUN_PYTHON -m torch.distributed.run --nproc_per_node=$NUM_GPUS --master_port=29500"
+else
+  LAUNCHER="$RUN_PYTHON"
+fi
+
+$LAUNCHER "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --dataset-dir "$PROCESSED_DIR" \
   --model-name "$MODEL_ID" \
   --output-dir "$OUTPUT_DIR" \

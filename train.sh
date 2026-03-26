@@ -27,7 +27,9 @@ OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/artifacts/runs/$RUN_NAME}"
 EPOCHS="${EPOCHS:-8}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
-LEARNING_RATE="${LEARNING_RATE:-5e-5}"
+LEARNING_RATE="${LEARNING_RATE:-1e-4}"
+LORA_R="${LORA_R:-32}"
+LORA_ALPHA="${LORA_ALPHA:-64}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
 MIN_DURATION_S="${MIN_DURATION_S:-0.5}"
 MAX_DURATION_S="${MAX_DURATION_S:-20.0}"
@@ -116,6 +118,8 @@ $LAUNCHER "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --batch-size "$BATCH_SIZE" \
   --gradient-accumulation-steps "$GRAD_ACCUM" \
   --learning-rate "$LEARNING_RATE" \
+  --lora-r "$LORA_R" \
+  --lora-alpha "$LORA_ALPHA" \
   --save-steps "$SAVE_STEPS" \
   --logging-steps "$LOGGING_STEPS" \
   --bf16 \

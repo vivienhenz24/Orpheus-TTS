@@ -206,8 +206,6 @@ def main():
 
     raw_dataset = load_source_dataset(args.dataset, args.split, args.hf_token)
     raw_dataset = raw_dataset.cast_column(args.audio_column, Audio(decode=False))
-    raw_dataset = raw_dataset.filter(lambda ex: "female" in str(ex[args.speaker_column]).lower())
-    print(f"Filtered to female speakers: {len(raw_dataset)} examples remaining")
 
     required_columns = {args.audio_column, args.text_column}
     missing = [col for col in required_columns if col not in raw_dataset.column_names]

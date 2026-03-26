@@ -69,7 +69,8 @@ uv pip install --python "$RUN_PYTHON" \
   "snac>=1.2.1" \
   "wandb>=0.19.0" \
   "sentencepiece>=0.2.0" \
-  "protobuf>=5.29.0"
+  "protobuf>=5.29.0" \
+  "peft>=0.10.0"
 
 if [[ "$FORCE_PREPROCESS" == "1" || ! -d "$PROCESSED_DIR" ]]; then
   "$RUN_PYTHON" "$ROOT_DIR/scripts/prepare_orpheus_dataset.py" \

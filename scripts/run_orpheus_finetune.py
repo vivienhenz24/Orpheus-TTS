@@ -6,6 +6,7 @@ from pathlib import Path
 import soundfile as sf
 import torch
 from datasets import load_from_disk
+from peft import LoraConfig, TaskType, get_peft_model
 from snac import SNAC
 from torch.nn.utils.rnn import pad_sequence
 from transformers import (
@@ -177,6 +178,14 @@ def main():
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--logging-steps", type=int, default=10)
     parser.add_argument("--enable-samples", action="store_true")
+    parser.add_argument("--lora-r", type=int, default=16)
+    parser.add_argument("--lora-alpha", type=int, default=32)
+    parser.add_argument("--lora-dropout", type=float, default=0.05)
+    parser.add_argument(
+        "--lora-target-modules",
+        nargs="+",
+        default=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    )
     args = parser.parse_args()
 
     dataset = load_from_disk(args.dataset_dir)
@@ -192,6 +201,17 @@ def main():
         torch_dtype=torch_dtype,
         attn_implementation=attn_implementation,
     )
+
+    lora_config = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        target_modules=args.lora_target_modules,
+        bias="none",
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -239,7 +259,7 @@ def main():
 
     trainer.train()
     final_dir = output_dir / "final"
-    trainer.save_model(str(final_dir))
+    model.save_pretrained(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))
 
     metadata = {

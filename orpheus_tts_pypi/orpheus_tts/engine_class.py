@@ -12,12 +12,13 @@ class OrpheusModel:
         self.model_name = self._map_model_params(model_name)
         self.dtype = dtype
         self.engine_kwargs = engine_kwargs  # vLLM engine kwargs
-        self.engine = self._setup_engine()
         self.available_voices = ["zoe", "zac","jess", "leo", "mia", "julia", "leah"]
-        
-        # Use provided tokenizer path or default to model_name
-        tokenizer_path = tokenizer if tokenizer else model_name
-        self.tokenizer = self._load_tokenizer(tokenizer_path)
+
+        # Resolve the tokenizer path up front so vLLM doesn't try to infer it
+        # from a checkpoint directory that only contains weights/config shards.
+        self.tokenizer_path = tokenizer if tokenizer else self.model_name
+        self.tokenizer = self._load_tokenizer(self.tokenizer_path)
+        self.engine = self._setup_engine()
 
     def _load_tokenizer(self, tokenizer_path):
         """Load tokenizer from local path or HuggingFace hub"""
@@ -58,6 +59,7 @@ class OrpheusModel:
     def _setup_engine(self):
         engine_args = AsyncEngineArgs(
             model=self.model_name,
+            tokenizer=self.tokenizer_path,
             dtype=self.dtype,
             **self.engine_kwargs
         )
@@ -130,5 +132,4 @@ class OrpheusModel:
     
     def generate_speech(self, **kwargs):
         return tokens_decoder_sync(self.generate_tokens_sync(**kwargs))
-
 

@@ -50,8 +50,9 @@ export TOKENIZERS_PARALLELISM=false
 mkdir -p "$ROOT_DIR/artifacts/datasets" "$ROOT_DIR/artifacts/runs"
 
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is required but was not found on PATH." >&2
-  exit 1
+  echo "uv not found, installing..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
 uv venv --python "$PYTHON_BIN" "$VENV_DIR"

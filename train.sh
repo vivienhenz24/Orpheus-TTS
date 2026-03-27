@@ -26,13 +26,14 @@ OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/artifacts/runs/$RUN_NAME}"
 
 EPOCHS="${EPOCHS:-8}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
-GRAD_ACCUM="${GRAD_ACCUM:-1}"
+GRAD_ACCUM="${GRAD_ACCUM:-8}"
 LEARNING_RATE="${LEARNING_RATE:-1e-4}"
 LORA_R="${LORA_R:-32}"
 LORA_ALPHA="${LORA_ALPHA:-64}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
 MIN_DURATION_S="${MIN_DURATION_S:-0.5}"
 MAX_DURATION_S="${MAX_DURATION_S:-20.0}"
+WARMUP_RATIO="${WARMUP_RATIO:-0.03}"
 SAVE_STEPS="${SAVE_STEPS:-0}"
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 PREFETCH_WORKERS="${PREFETCH_WORKERS:-4}"
@@ -122,6 +123,7 @@ $LAUNCHER "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --lora-alpha "$LORA_ALPHA" \
   --save-steps "$SAVE_STEPS" \
   --logging-steps "$LOGGING_STEPS" \
+  --warmup-ratio "$WARMUP_RATIO" \
   --bf16 \
   --prompt-template "$PROMPT_TEMPLATE" \
   --sample-text "Merhaba, bu modeli Turkce ses uretimi icin test ediyoruz." \

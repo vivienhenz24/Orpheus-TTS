@@ -41,6 +41,10 @@ PREFETCH_WORKERS="${PREFETCH_WORKERS:-4}"
 PREFETCH_FACTOR="${PREFETCH_FACTOR:-16}"
 PROGRESS_EVERY="${PROGRESS_EVERY:-100}"
 
+PHONEMIZE="${PHONEMIZE:-1}"
+PHONEMIZE_LANG="${PHONEMIZE_LANG:-tr}"
+WARM_START_FROM="${WARM_START_FROM:-vsqrd/orpheus-turkish-finetune-v1}"   # path to existing LoRA checkpoint to warm-start from
+HF_PUSH_REPO="${HF_PUSH_REPO:-}"        # e.g. vsqrd/orpheus-turkish-warmstart — set to push to HF
 FORCE_PREPROCESS="${FORCE_PREPROCESS:-0}"
 TEXT_COLUMN="${TEXT_COLUMN:-text}"
 SPEAKER_COLUMN="${SPEAKER_COLUMN:-speaker_id}"
@@ -77,6 +81,34 @@ uv pip install --python "$RUN_PYTHON" \
   "protobuf>=5.29.0" \
   "peft>=0.10.0"
 
+# ── Warm-start: extend tokenizer + migrate checkpoint ─────────────────────────
+if [[ "$PHONEMIZE" == "1" && -n "$WARM_START_FROM" ]]; then
+  PHONEME_TOK_DIR="$ROOT_DIR/artifacts/tokenizer_phoneme"
+  WARMSTART_DIR="$ROOT_DIR/artifacts/warmstart"
+
+  if [[ ! -d "$WARMSTART_DIR" ]]; then
+    echo "Running tokenizer extension + warm-start from $WARM_START_FROM..."
+    "$RUN_PYTHON" "$ROOT_DIR/scripts/extend_tokenizer.py" \
+      --checkpoint "$WARM_START_FROM" \
+      --output-tokenizer "$PHONEME_TOK_DIR" \
+      --output-checkpoint "$WARMSTART_DIR" \
+      --hf-token "$HF_TOKEN"
+  else
+    echo "Warm-start checkpoint already exists at $WARMSTART_DIR"
+  fi
+
+  if [[ -n "$HF_PUSH_REPO" ]]; then
+    echo "Pushing warm-start checkpoint to $HF_PUSH_REPO..."
+    huggingface-cli upload "$HF_PUSH_REPO" "$WARMSTART_DIR" . \
+      --token "$HF_TOKEN" --repo-type model
+    echo "Pushed to https://huggingface.co/$HF_PUSH_REPO"
+    MODEL_ID="$HF_PUSH_REPO"
+  else
+    MODEL_ID="$WARMSTART_DIR"
+  fi
+  TOKENIZER_ID="$PHONEME_TOK_DIR"
+fi
+
 if [[ "$FORCE_PREPROCESS" == "1" || ! -d "$PROCESSED_DIR" ]]; then
   "$RUN_PYTHON" "$ROOT_DIR/scripts/prepare_orpheus_dataset.py" \
     --dataset "$DATASET_ID" \
@@ -95,7 +127,8 @@ if [[ "$FORCE_PREPROCESS" == "1" || ! -d "$PROCESSED_DIR" ]]; then
     --prefetch-workers "$PREFETCH_WORKERS" \
     --prefetch-factor "$PREFETCH_FACTOR" \
     --progress-every "$PROGRESS_EVERY" \
-    ${PROMPT_TEMPLATE:+--prompt-template "$PROMPT_TEMPLATE"}
+    ${PROMPT_TEMPLATE:+--prompt-template "$PROMPT_TEMPLATE"} \
+    $([[ "$PHONEMIZE" == "1" ]] && echo "--phonemize --phonemize-lang $PHONEMIZE_LANG")
 else
   echo "Using existing processed dataset at $PROCESSED_DIR"
 fi

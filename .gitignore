@@ -2,3 +2,4 @@
 combined_dataset/
 .env
 artifacts/
+checkpoints/

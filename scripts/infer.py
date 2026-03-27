@@ -13,6 +13,8 @@ import argparse
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
 import soundfile as sf
 import torch
 from peft import PeftModel
@@ -60,6 +62,8 @@ def main():
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--max-new-tokens", type=int, default=1400)
     parser.add_argument("--snac-model", default="hubertsiuzdak/snac_24khz")
+    parser.add_argument("--phonemize", action="store_true", help="Convert text to phoneme tokens via eSpeak-NG before inference")
+    parser.add_argument("--phonemize-lang", default="tr")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -88,7 +92,13 @@ def main():
     model = model.to(device).eval()
     print(f"  merged model params: {sum(p.numel() for p in model.parameters()):,}")
 
-    prompt = args.text
+    if args.phonemize:
+        from phonemize import phonemize
+        phonemized = phonemize(args.text, lang=args.phonemize_lang)
+        print(f"Phonemized: {phonemized[:100]}...")
+        prompt = f"{args.speaker}: {phonemized}" if args.speaker else phonemized
+    else:
+        prompt = f"{args.speaker}: {args.text}" if args.speaker else args.text
     emb_size = model.get_input_embeddings().weight.shape[0]
     print(f"\nEmbedding table size: {emb_size}")
     print(f"Max token ID we use: {LAYER_2_OFFSET + 16384} (should be < {emb_size})")

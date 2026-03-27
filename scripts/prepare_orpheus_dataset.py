@@ -2,8 +2,12 @@ import argparse
 import concurrent.futures
 import io
 import json
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
 
 import soundfile as sf
 import torch
@@ -151,7 +155,13 @@ def build_processor(args):
 
         text = prepared["text"]
         speaker = prepared["speaker_id"]
-        prompt = render_prompt(args.prompt_template, text, speaker)
+
+        if args.phonemize:
+            from phonemize import phonemize as ph
+            phonemized = ph(text, lang=args.phonemize_lang)
+            prompt = render_prompt(args.prompt_template, phonemized, speaker)
+        else:
+            prompt = render_prompt(args.prompt_template, text, speaker)
 
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=True)
         prompt_ids.append(END_OF_TEXT)
@@ -190,6 +200,8 @@ def main():
     parser.add_argument("--text-column", default="text")
     parser.add_argument("--speaker-column", default="speaker_id")
     parser.add_argument("--default-speaker", default="speaker")
+    parser.add_argument("--phonemize", action="store_true", help="Convert text to phoneme tokens via eSpeak-NG")
+    parser.add_argument("--phonemize-lang", default="tr", help="eSpeak-NG language code (default: tr)")
     parser.add_argument("--prompt-template", default=None)
     parser.add_argument("--target-sample-rate", type=int, default=24000)
     parser.add_argument("--min-duration-s", type=float, default=0.5)

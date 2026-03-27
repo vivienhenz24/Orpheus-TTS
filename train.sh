@@ -57,6 +57,11 @@ export TOKENIZERS_PARALLELISM=false
 
 mkdir -p "$ROOT_DIR/artifacts/datasets" "$ROOT_DIR/artifacts/runs"
 
+if [[ "$PHONEMIZE" == "1" ]] && ! command -v espeak-ng >/dev/null 2>&1; then
+  echo "Installing espeak-ng..."
+  apt-get install -y -q espeak-ng
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv not found, installing..."
   curl -LsSf https://astral.sh/uv/install.sh | sh

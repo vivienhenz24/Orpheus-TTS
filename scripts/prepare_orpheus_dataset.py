@@ -160,7 +160,8 @@ def build_processor(args):
         if len(input_ids) > args.max_seq_len:
             return None
 
-        labels = input_ids[:]
+        prompt_length = 1 + len(prompt_ids) + 1  # START_OF_HUMAN + prompt_ids + END_OF_HUMAN
+        labels = [-100] * prompt_length + input_ids[prompt_length:]
         attention_mask = [1] * len(input_ids)
 
         return {

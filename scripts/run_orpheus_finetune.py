@@ -72,7 +72,7 @@ def deinterleave_to_layers(token_ids):
         codes_l1.append(frame[1] - LAYER_1_OFFSET)
         codes_l2.append(frame[2] - LAYER_2_OFFSET)
         codes_l2.append(frame[3] - LAYER_2_OFFSET - 4096)
-        codes_l1.append(frame[4] - LAYER_1_OFFSET - 8192)
+        codes_l1.append(frame[4] - LAYER_1_OFFSET - 12288)
         codes_l2.append(frame[5] - LAYER_2_OFFSET - 12288)
         codes_l2.append(frame[6] - LAYER_2_OFFSET - 16384)
     return codes_l0, codes_l1, codes_l2
@@ -165,7 +165,7 @@ def main():
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--hf-token", default=None)
     parser.add_argument("--pad-token", type=int, default=128263)
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=5e-5)
@@ -208,7 +208,9 @@ def main():
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         target_modules=args.lora_target_modules,
+        modules_to_save=["lm_head", "embed_tokens"],
         bias="none",
+        use_rslora=True,
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()

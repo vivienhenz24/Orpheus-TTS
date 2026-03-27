@@ -34,7 +34,8 @@ MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
 MIN_DURATION_S="${MIN_DURATION_S:-0.5}"
 MAX_DURATION_S="${MAX_DURATION_S:-20.0}"
 WARMUP_RATIO="${WARMUP_RATIO:-0.03}"
-SAVE_STEPS="${SAVE_STEPS:-0}"
+SAVE_STEPS="${SAVE_STEPS:-500}"
+RESUME_FROM="${RESUME_FROM:-}"
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 PREFETCH_WORKERS="${PREFETCH_WORKERS:-4}"
 PREFETCH_FACTOR="${PREFETCH_FACTOR:-16}"
@@ -125,6 +126,7 @@ $LAUNCHER "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --logging-steps "$LOGGING_STEPS" \
   --warmup-ratio "$WARMUP_RATIO" \
   --bf16 \
+  ${RESUME_FROM:+--resume-from-checkpoint "$RESUME_FROM"} \
   --prompt-template "$PROMPT_TEMPLATE" \
   --sample-text "Merhaba, bu modeli Turkce ses uretimi icin test ediyoruz." \
   --sample-text "Bugun hava oldukca guzel, disari cikmak istiyorum." \

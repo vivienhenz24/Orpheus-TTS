@@ -178,6 +178,7 @@ def main():
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--logging-steps", type=int, default=10)
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
+    parser.add_argument("--resume-from-checkpoint", default=None)
     parser.add_argument("--enable-samples", action="store_true")
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
@@ -261,7 +262,7 @@ def main():
         callbacks=callbacks,
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     final_dir = output_dir / "final"
     model.save_pretrained(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))

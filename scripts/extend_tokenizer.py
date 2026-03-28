@@ -112,6 +112,9 @@ def main():
 
     # ── 5. Save checkpoint ────────────────────────────────────────────────────
     print(f"\nSaving warm-started model to {output_ckpt_dir}...")
+    # Ensure model_type is preserved in config (merge_and_unload can drop it)
+    if not hasattr(model.config, "model_type") or not model.config.model_type:
+        model.config.model_type = "llama"
     model.save_pretrained(str(output_ckpt_dir))
     tokenizer.save_pretrained(str(output_ckpt_dir))
     print("Done.")

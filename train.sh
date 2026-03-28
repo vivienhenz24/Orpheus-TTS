@@ -159,6 +159,7 @@ $LAUNCHER "$ROOT_DIR/scripts/run_orpheus_finetune.py" \
   --gradient-accumulation-steps "$GRAD_ACCUM" \
   --learning-rate "$LEARNING_RATE" \
   --lora-r "$LORA_R" \
+  --tokenizer-name "$TOKENIZER_ID" \
   --lora-alpha "$LORA_ALPHA" \
   --save-steps "$SAVE_STEPS" \
   --logging-steps "$LOGGING_STEPS" \

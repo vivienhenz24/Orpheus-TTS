@@ -162,6 +162,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset-dir", required=True)
     parser.add_argument("--model-name", default="canopylabs/orpheus-tts-0.1-pretrained")
+    parser.add_argument("--tokenizer-name", default=None, help="Tokenizer path/repo (defaults to --model-name)")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--hf-token", default=None)
     parser.add_argument("--pad-token", type=int, default=128263)
@@ -191,7 +192,8 @@ def main():
     args = parser.parse_args()
 
     dataset = load_from_disk(args.dataset_dir)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=args.hf_token)
+    tokenizer_name = args.tokenizer_name or args.model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, token=args.hf_token)
 
     attn_implementation = choose_attn_implementation()
     bf16_enabled = args.bf16 and torch.cuda.is_available() and torch.cuda.is_bf16_supported()

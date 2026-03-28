@@ -77,7 +77,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         token=args.hf_token,
-        torch_dtype=torch.float32,  # float32 for safe embedding init
+        torch_dtype=torch.bfloat16,
     )
 
     print(f"Loading LoRA adapter from {args.checkpoint}...")

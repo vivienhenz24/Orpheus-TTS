@@ -29,7 +29,7 @@ MAX_MODEL_LEN = int(os.environ.get("MAX_MODEL_LEN", "4096"))
 DEFAULT_REPETITION_PENALTY = float(os.environ.get("DEFAULT_REPETITION_PENALTY", "1.1"))
 DEFAULT_MAX_TOKENS = int(os.environ.get("DEFAULT_MAX_TOKENS", "2000"))
 DEFAULT_TEMPERATURE = float(os.environ.get("DEFAULT_TEMPERATURE", "0.4"))
-DEFAULT_TOP_P = float(os.environ.get("DEFAULT_TOP_P", "0.9"))
+DEFAULT_TOP_P = float(os.environ.get("DEFAULT_TOP_P", "0.5"))
 SAMPLE_RATE = 24000
 DEBUG_DIR = os.environ.get("ORPHEUS_DEBUG_DIR")
 

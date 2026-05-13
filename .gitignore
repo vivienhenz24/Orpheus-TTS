@@ -3,3 +3,7 @@ combined_dataset/
 .env
 artifacts/
 checkpoints/
+__pycache__/
+*.pyc
+*.pyo
+inference_samples/

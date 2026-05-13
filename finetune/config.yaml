@@ -1,17 +1,19 @@
-# CHANGE THIS TO YOUR OWN DATASET
-TTS_dataset: <PATH_TO_YOUR_DATASET>
+TTS_dataset: "/workspace/orpheus_tr/tokenized_tts_dataset"
 
-model_name: "canopylabs/orpheus-tts-0.1-pretrained"
+model_name: "/workspace/Orpheus-TTS/pretrain/checkpoints/tr_orpheus_pretrain_stage1/checkpoint-38799"
+tokenizer_name: "canopylabs/orpheus-3b-0.1-pretrained"
 
-# Training Args
-epochs: 1
+epochs: 3
 batch_size: 1
-number_processes: 1
+number_processes: 2
 pad_token: 128263
-save_steps: 5000
+save_steps: 19400
+
+# Set to a local path or HF repo ID (e.g. "vsqrd/orpheus-3b-turkish-finetune-lora")
+# to resume from an existing LoRA checkpoint instead of initializing a fresh one.
+resume_from_lora: "vsqrd/orpheus-3b-turkish-finetune-lora"
 learning_rate: 5.0e-5
 
-# Naming and paths
-save_folder: "checkpoints"
-project_name: "tuning-orpheus"
-run_name: "5e5-0"
+save_folder: "checkpoints/tr_orpheus_finetune_taha_sila"
+project_name: "orpheus-tr"
+run_name: "tr-finetune-taha-sila"

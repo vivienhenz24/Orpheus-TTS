@@ -1,22 +1,18 @@
+import os
+from datetime import datetime
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from transformers import AutoModelForCausalLM, Trainer, TrainingArguments, AutoTokenizer
 import numpy as np
-from torch.distributed.fsdp.fully_sharded_data_parallel import FullStateDictConfig
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP, FullStateDictConfig, StateDictType)
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.distributed import DistributedSampler
 import yaml
-import wandb
-from huggingface_hub import HfApi
 
-config_file = "config.yaml"
+config_file = os.environ.get("ORPHEUS_PRETRAIN_CONFIG", "config.yaml")
 
 with open(config_file, "r") as file:
     config = yaml.safe_load(file)
 
-dsn1 = config["text_QA_dataset"]
+dsn1 = config.get("text_QA_dataset")
 dsn2 = config["TTS_dataset"]
 
 model_name = config["model_name"]
@@ -32,13 +28,15 @@ save_steps = config["save_steps"]
 pad_token = config["pad_token"]
 number_processes = config["number_processes"]
 learning_rate = config["learning_rate"]
-config_ratio = config["ratio"]
+config_ratio = int(config.get("ratio", 0))
 
 
 
 
 class BatchedRatioDataset(Dataset):
     def __init__(self, dataset1, dataset2, batch_total, ratio=config_ratio):
+        if ratio <= 0:
+            raise ValueError("BatchedRatioDataset requires ratio > 0")
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.batch_total = batch_total
@@ -73,68 +71,34 @@ class BatchedRatioDataset(Dataset):
 
 
 
-class AlternatingDistributedSampler(DistributedSampler):
-    def __init__(self, dataset, num_replicas=None, rank=None, shuffle=False):
-        super().__init__(dataset, num_replicas=num_replicas, rank=rank, shuffle=shuffle)
-        self.shuffle = shuffle
-
-    def __iter__(self):
-        indices = list(range(len(self.dataset)))
-        indices = indices[self.rank:self.total_size:self.num_replicas]
-        return iter(indices)
-
-
 class FSDPTrainer(Trainer):
     def __init__(self, *args, log_ratio=config_ratio, **kwargs):
         super().__init__(*args, **kwargs)
-        self.repo_id = base_repo_id
-        self.api = HfApi()
-
         self.log_ratio = log_ratio
         self.text_step  = 0
         self.audio_step = 0
 
-    def get_train_dataloader(self):
-        sampler = AlternatingDistributedSampler(
-            self.train_dataset,
-            num_replicas=torch.distributed.get_world_size(),
-            rank=torch.distributed.get_rank(),
-            shuffle=False,
-        )
-
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.args.per_device_train_batch_size,
-            sampler=sampler,
-            collate_fn=self.data_collator,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=0,
-            pin_memory=self.args.dataloader_pin_memory,
-        )
-
     def log(self, logs, start_time=None):
-        super().log(logs, start_time)
+        super().log(logs)
         if self.is_world_process_zero():
+            ts = datetime.now().strftime("%H:%M:%S")
+            if self.log_ratio <= 0:
+                print(f"[{ts}] audio_step={self.audio_step} loss={logs['loss']:.4f}", flush=True)
+                self.audio_step += 1
+                return
             global_step = self.state.global_step
-            # Each cycle is (log_ratio + 1) steps: first log_ratio steps for text_loss, then one for audio_loss.
             cycle_length = self.log_ratio + 1
             if (global_step % cycle_length) + self.log_ratio - 1 < self.log_ratio:
-                wandb.log({"audio_loss": logs["loss"], "audio_step": self.audio_step})
+                print(f"[{ts}] audio_step={self.audio_step} loss={logs['loss']:.4f}", flush=True)
                 self.audio_step += 1
             else:
-                wandb.log({"text_loss": logs["loss"], "text_step": self.text_step})
+                print(f"[{ts}] text_step={self.text_step} loss={logs['loss']:.4f}", flush=True)
                 self.text_step += 1
 
     def save_model(self, output_dir=None, _internal_call=False):
         if output_dir is None:
             output_dir = self.args.output_dir
-        self.save_and_push_model(output_dir)
-
-    def save_and_push_model(self, output_dir):
-        save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-        with FSDP.state_dict_type(self.model, StateDictType.FULL_STATE_DICT, save_policy):
-            cpu_state_dict = self.model.state_dict()
-        self.model.save_pretrained(output_dir, state_dict=cpu_state_dict)
+        self.model.save_pretrained(output_dir)
 
 
 def data_collator(features):
@@ -162,8 +126,6 @@ def data_collator(features):
     return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
 
-wandb.init(project=project_name, name=run_name)
-
 
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 model = AutoModelForCausalLM.from_pretrained(
@@ -176,23 +138,41 @@ tokenizer.add_tokens(new_tokens)
 model.resize_token_embeddings(len(tokenizer))
 
 
-ds1 = load_dataset(dsn1, split="train")
-ds2 = load_dataset(dsn2, split="train")
+def load_training_dataset(dsn):
+    if os.path.isdir(dsn):
+        parquet_dir = os.path.join(dsn, "parquet")
+        if os.path.isdir(parquet_dir):
+            parquet_files = sorted(
+                os.path.join(parquet_dir, name)
+                for name in os.listdir(parquet_dir)
+                if name.endswith(".parquet")
+            )
+            if not parquet_files:
+                raise ValueError(f"No parquet shards found in {parquet_dir}")
+            return load_dataset("parquet", data_files=parquet_files, split="train")
+        return load_from_disk(dsn)
+    return load_dataset(dsn, split="train")
 
 
+ds2 = load_training_dataset(dsn2)
 batch_total = batch_size * number_processes
-train_dataset = BatchedRatioDataset(ds1, ds2, batch_total, ratio=config_ratio)
+if config_ratio > 0:
+    if not dsn1:
+        raise ValueError("text_QA_dataset is required when ratio > 0")
+    ds1 = load_training_dataset(dsn1)
+    train_dataset = BatchedRatioDataset(ds1, ds2, batch_total, ratio=config_ratio)
+else:
+    train_dataset = ds2
 
 
 training_args = TrainingArguments(
     overwrite_output_dir=True,
     num_train_epochs=epochs,
     per_device_train_batch_size=batch_size,
-    logging_steps=1,
+    logging_steps=100,
     bf16=True,
     output_dir=f"./{base_repo_id}",
-    fsdp="auto_wrap",
-    report_to="wandb",
+    report_to="none",
     save_steps=save_steps,
     remove_unused_columns=True,
     learning_rate=learning_rate,
@@ -208,4 +188,6 @@ trainer = FSDPTrainer(
     log_ratio=config_ratio
 )
 
+print(f"[{datetime.now().strftime('%H:%M:%S')}] training started — model={model_name} lr={learning_rate} epochs={epochs}", flush=True)
 trainer.train()
+print(f"[{datetime.now().strftime('%H:%M:%S')}] training complete", flush=True)

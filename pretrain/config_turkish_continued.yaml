@@ -1,0 +1,27 @@
+# Turkish continued-pretraining template for Orpheus.
+#
+# Use ratio: 0 for TTS-only adaptation.
+# Use ratio: 1 for a simple 1:1 mix of Turkish text batches and Turkish TTS batches.
+
+# Model
+model_name: "canopylabs/orpheus-3b-0.1-pretrained"
+tokenizer_name: "canopylabs/orpheus-3b-0.1-pretrained"
+
+# Training Args
+epochs: 1
+batch_size: 1
+number_processes: 1
+pad_token: 128263
+save_steps: 2000
+learning_rate: 2.0e-5
+ratio: 0
+
+# Datasets
+# Set text_QA_dataset to null when ratio: 0
+text_QA_dataset: null
+TTS_dataset: "<YOUR_LOCAL_OR_REMOTE_TOKENIZED_TURKISH_TTS_DATASET>"
+
+# Naming and paths
+save_folder: "checkpoints/tr_orpheus_pretrain_stage1"
+project_name: "orpheus-tr"
+run_name: "tr-stage1"

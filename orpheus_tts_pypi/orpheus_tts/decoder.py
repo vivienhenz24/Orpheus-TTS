@@ -1,3 +1,7 @@
+import json
+import time
+from pathlib import Path
+
 from snac import SNAC
 import numpy as np
 import torch
@@ -11,6 +15,16 @@ model = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval()
 
 snac_device = os.environ.get("SNAC_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(snac_device)
+DEBUG_DIR = os.environ.get("ORPHEUS_DEBUG_DIR")
+
+
+def write_debug_json(request_id, suffix, payload):
+    if not DEBUG_DIR or not request_id:
+        return
+    debug_dir = Path(DEBUG_DIR)
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    with (debug_dir / f"{request_id}.{suffix}.json").open("w") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
 def convert_to_audio(multiframe, count):
@@ -91,27 +105,49 @@ def turn_token_into_id(token_string, index):
         return None
   
     
-async def tokens_decoder(token_gen):
+async def tokens_decoder(token_gen, request_id=None):
     buffer = []
     count = 0
-    async for token_sim in token_gen:       
+    debug = {
+        "request_id": request_id,
+        "started_at": time.time(),
+        "events_seen": 0,
+        "parsed_tokens": 0,
+        "invalid_events": 0,
+        "audio_chunks": 0,
+        "audio_bytes": 0,
+        "audio_chunk_sizes": [],
+        "first_audio_token_index": None,
+    }
+    async for token_sim in token_gen:
+        debug["events_seen"] += 1
         token = turn_token_into_id(token_sim, count)
         if token is None:
-            pass
+            debug["invalid_events"] += 1
         else:
             if token > 0:
                 buffer.append(token)
                 count += 1
+                debug["parsed_tokens"] = count
 
                 if count % 7 == 0 and count > 27:
                     buffer_to_proc = buffer[-28:]
                     audio_samples = convert_to_audio(buffer_to_proc, count)
                     if audio_samples is not None:
+                        if debug["first_audio_token_index"] is None:
+                            debug["first_audio_token_index"] = count
+                        debug["audio_chunks"] += 1
+                        debug["audio_bytes"] += len(audio_samples)
+                        if len(debug["audio_chunk_sizes"]) < 12:
+                            debug["audio_chunk_sizes"].append(len(audio_samples))
                         yield audio_samples
+    debug["finished_at"] = time.time()
+    debug["elapsed_s"] = debug["finished_at"] - debug["started_at"]
+    write_debug_json(request_id, "decoder", debug)
 
 
 # ------------------ Synchronous Tokens Decoder Wrapper ------------------ #
-def tokens_decoder_sync(syn_token_gen):
+def tokens_decoder_sync(syn_token_gen, request_id=None):
 
     audio_queue = queue.Queue()
 
@@ -122,7 +158,7 @@ def tokens_decoder_sync(syn_token_gen):
 
     async def async_producer():
         # tokens_decoder.tokens_decoder is assumed to be an async generator that processes tokens.
-        async for audio_chunk in tokens_decoder(async_token_gen()):
+        async for audio_chunk in tokens_decoder(async_token_gen(), request_id=request_id):
             audio_queue.put(audio_chunk)
         audio_queue.put(None)  # Sentinel
 

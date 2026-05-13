@@ -1,11 +1,20 @@
 import asyncio
-import torch
+import json
 import os
-from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
-from transformers import AutoTokenizer
-import threading
 import queue
+import re
+import threading
+import time
+import uuid
+from pathlib import Path
+
+import torch
+from transformers import AutoTokenizer
+from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
+
 from .decoder import tokens_decoder_sync
+
+DEBUG_DIR = os.environ.get("ORPHEUS_DEBUG_DIR")
 
 class OrpheusModel:
     def __init__(self, model_name, dtype=torch.bfloat16, tokenizer='canopylabs/orpheus-3b-0.1-pretrained', **engine_kwargs):
@@ -65,6 +74,14 @@ class OrpheusModel:
         )
         
         return AsyncLLMEngine.from_engine_args(engine_args)
+
+    def _write_debug_json(self, request_id, suffix, payload):
+        if not DEBUG_DIR:
+            return
+        debug_dir = Path(DEBUG_DIR)
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        with (debug_dir / f"{request_id}.{suffix}.json").open("w") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
     
     def validate_voice(self, voice):
         if voice:
@@ -97,9 +114,25 @@ class OrpheusModel:
  
 
 
-    def generate_tokens_sync(self, prompt, voice=None, request_id="req-001", temperature=0.6, top_p=0.8, max_tokens=1200, stop_token_ids = [49158], repetition_penalty=1.3):
+    def generate_tokens_sync(self, prompt, voice=None, request_id=None, temperature=0.6, top_p=0.8, max_tokens=1200, stop_token_ids = [49158], repetition_penalty=1.3):
+        if request_id is None:
+            request_id = f"req-{uuid.uuid4().hex}"
         prompt_string = self._format_prompt(prompt, voice)
-        print(prompt)
+        debug = {
+            "request_id": request_id,
+            "voice": voice,
+            "prompt": prompt,
+            "prompt_string_preview": prompt_string[:300],
+            "prompt_string_len": len(prompt_string),
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+            "stop_token_ids": stop_token_ids,
+            "repetition_penalty": repetition_penalty,
+            "started_at": time.time(),
+            "callback_count": 0,
+            "stream_text_samples": [],
+        }
         sampling_params = SamplingParams(
         temperature=temperature,
         top_p=top_p,
@@ -111,9 +144,22 @@ class OrpheusModel:
         token_queue = queue.Queue()
 
         async def async_producer():
+            last_text = ""
             async for result in self.engine.generate(prompt=prompt_string, sampling_params=sampling_params, request_id=request_id):
-                # Place each token text into the queue.
-                token_queue.put(result.outputs[0].text)
+                last_text = result.outputs[0].text
+                debug["callback_count"] += 1
+                if len(debug["stream_text_samples"]) < 8:
+                    debug["stream_text_samples"].append({
+                        "len": len(last_text),
+                        "tail": last_text[-120:],
+                    })
+                token_queue.put(last_text)
+            debug["finished_at"] = time.time()
+            debug["elapsed_s"] = debug["finished_at"] - debug["started_at"]
+            debug["final_text_len"] = len(last_text)
+            debug["custom_token_count"] = len(re.findall(r"<custom_token_\d+>", last_text))
+            debug["final_text_tail"] = last_text[-500:]
+            self._write_debug_json(request_id, "engine", debug)
             token_queue.put(None)  # Sentinel to indicate completion.
 
         def run_async():
@@ -131,5 +177,5 @@ class OrpheusModel:
         thread.join()
     
     def generate_speech(self, **kwargs):
-        return tokens_decoder_sync(self.generate_tokens_sync(**kwargs))
-
+        request_id = kwargs.get("request_id")
+        return tokens_decoder_sync(self.generate_tokens_sync(**kwargs), request_id=request_id)
